@@ -8,6 +8,18 @@ export type SystemStatus = {
   utcTime: string
 }
 
+export type ProductListItem = {
+  productId: string
+  name: string
+  description: string | null
+  imageUrl: string | null
+  startingPrice: number
+  flashSaleStartingPrice: number | null
+  isOnFlashSale: boolean
+  availableQuantity: number
+  soldQuantity: number
+}
+
 export async function getSystemStatus(signal?: AbortSignal): Promise<SystemStatus> {
   const response = await fetch(`${apiBaseUrl}/api/system/status`, { signal })
 
@@ -16,4 +28,14 @@ export async function getSystemStatus(signal?: AbortSignal): Promise<SystemStatu
   }
 
   return response.json() as Promise<SystemStatus>
+}
+
+export async function getProducts(signal?: AbortSignal): Promise<ProductListItem[]> {
+  const response = await fetch(`${apiBaseUrl}/api/products`, { signal })
+
+  if (!response.ok) {
+    throw new Error(`Products request failed with ${response.status}`)
+  }
+
+  return response.json() as Promise<ProductListItem[]>
 }

@@ -4,7 +4,8 @@ internal sealed class OrderEntity
 {
     public Guid OrderId { get; set; }
     public Guid UserId { get; set; }
-    public Guid FlashSaleId { get; set; }
+    public string OrderType { get; set; } = "Regular";
+    public Guid? FlashSaleId { get; set; }
     public string IdempotencyKey { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public decimal TotalAmount { get; set; }

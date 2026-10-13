@@ -16,9 +16,9 @@ Authentication
   → Purchase stored procedure
       → Validate user and requested quantity
       → Find or recognize (user_id, idempotency_key)
-      → Validate flash-sale status and UTC time window
-      → Validate the product belongs to the sale
-      → Validate and update the per-user quota
+      → Resolve order type
+          → Regular: use product_variants.base_price
+          → FlashSale: validate sale window, sale price, and per-user quota
       → Atomically decrement inventory
       → Create order and order item
       → Commit or roll back all changes
@@ -28,12 +28,13 @@ Authentication
 The stored procedure updates these data sets in one SQL transaction:
 
 ```text
-purchase_quotas
 inventory
 orders + order_items
 ```
 
-If the quota would be exceeded, stock is insufficient, the user or product is inactive, or the sale is unavailable, the procedure rolls back the entire operation. Rate limiting protects the API from excessive traffic but does not enforce the per-user purchase limit.
+For a FlashSale order, the same transaction also updates `purchase_quotas`. A Regular order leaves quota data unchanged.
+
+If stock is insufficient or the user, product, or variant is inactive, the procedure rolls back the entire operation. FlashSale orders also roll back when the sale is unavailable or its quota would be exceeded. Rate limiting protects the API from excessive traffic but does not enforce the per-user purchase limit.
 
 ### Concurrency invariants
 

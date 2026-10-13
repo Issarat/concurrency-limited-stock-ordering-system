@@ -27,7 +27,7 @@ export function PurchaseConfirmationPage() {
           </div>
         </div>
         <div className="actions">
-          <Link className="button secondary" to="/">
+          <Link className="button secondary" to="/dashboard">
             Back to products
           </Link>
         </div>

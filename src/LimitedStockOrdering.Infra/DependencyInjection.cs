@@ -1,3 +1,5 @@
+using LimitedStockOrdering.Application.Repositories;
+using LimitedStockOrdering.Infra.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
@@ -19,8 +21,9 @@ public static class DependencyInjection
             return dataSourceBuilder.Build();
         });
 
-        // เพิ่มภายหลังเมื่อมี Repository
-        // services.AddScoped<IProductRepository, ProductRepository>();
+        services.AddScoped<IProductRepository, ProductRepository>();
+
+        // เพิ่มภายหลังเมื่อมี Purchase Repository
         // services.AddScoped<IPurchaseRepository, PurchaseRepository>();
 
         return services;

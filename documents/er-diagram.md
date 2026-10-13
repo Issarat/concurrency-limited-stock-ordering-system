@@ -271,13 +271,14 @@ The primary key is (flash_sale_id, product_id, user_id). The pair (flash_sale_id
 
 ### orders
 
-Stores confirmed order requests. There is no payment transaction in the MVP.
+Stores confirmed Regular and FlashSale order requests. There is no payment transaction in the MVP.
 
 | Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
 | order_id | uuid | PK | No | Application generated | Unique order identifier |
 | user_id | uuid | FK → users.user_id | No | — | Buyer |
-| flash_sale_id | uuid | FK → flash_sales.flash_sale_id | No | — | Sale used by the order |
+| order_type | varchar(20) | — | No | Regular | Regular or FlashSale |
+| flash_sale_id | uuid | FK → flash_sales.flash_sale_id | Yes | NULL | Required only for a FlashSale order |
 | idempotency_key | varchar(100) | UK with user_id | No | — | Client-generated request identifier |
 | status | varchar(20) | — | No | Pending | Pending, Completed, Cancelled, or Failed |
 | total_amount | numeric(12,2) | — | No | — | Sum of item quantity multiplied by captured price |
@@ -346,6 +347,8 @@ The primary key is (order_id, variant_id).
 ### Orders
 
 - orders has unique (user_id, idempotency_key).
+- orders.order_type must be Regular or FlashSale.
+- Regular orders require flash_sale_id to be NULL; FlashSale orders require it to be non-NULL.
 - orders.status must be Pending, Completed, Cancelled, or Failed.
 - orders.total_amount must be greater than or equal to zero.
 - order_items.quantity must be greater than zero.
@@ -358,14 +361,15 @@ PostgreSQL does not automatically create indexes on referencing foreign-key colu
 
 ## Purchase transaction boundary
 
-The PostgreSQL purchase function receives the selected variant_id and performs all correctness checks in one transaction:
+The PostgreSQL purchase function receives the selected variant_id and order type, then performs all correctness checks in one transaction:
 
 ```text
 Validate user and requested quantity
   → Load variant and parent product
-  → Validate flash sale, product, and variant
   → Find or recognize (user_id, idempotency_key)
-  → Validate product-level quota across all variants
+  → Resolve purchase rules
+      → Regular: use product_variants.base_price
+      → FlashSale: validate sale/product/variant, use sale_price, and validate quota
   → Atomically decrement variant inventory
   → Increment inventory row_version
   → Create order and variant order item
@@ -375,8 +379,8 @@ Validate user and requested quantity
 The transaction must preserve these invariants:
 
 - inventory.available_quantity never becomes negative.
-- A user's product-level quota never exceeds flash_sale_products.per_user_limit.
-- A successful order, order item, quota change, and variant stock decrement commit together.
+- A user's product-level quota never exceeds flash_sale_products.per_user_limit for FlashSale orders.
+- A successful order, order item, any applicable quota change, and variant stock decrement commit together.
 - Retrying the same (user_id, idempotency_key) does not decrement stock or create another order.
 - SignalR publishes only committed variant inventory values.
 

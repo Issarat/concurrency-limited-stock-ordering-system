@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\LimitedStockOrdering.Application\LimitedStockOrdering.Application.csproj" />
     <ProjectReference Include="..\LimitedStockOrdering.Infra\LimitedStockOrdering.Infra.csproj" />
   </ItemGroup>
 
