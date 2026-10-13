@@ -168,14 +168,19 @@ export function PurchaseConfirmationPage() {
             </span>
           </div>
 
-          <button
-            className="order-confirm-button"
-            type="button"
-            disabled={!preview.hasSufficientStock || isReviewed}
-            onClick={() => setIsReviewed(true)}
-          >
-            {isReviewed ? <><CheckIcon />ตรวจสอบข้อมูลแล้ว</> : 'ยืนยันรายละเอียดรายการ'}
-          </button>
+          <div className="order-summary-actions">
+            <Link className="order-continue-button" to="/dashboard">
+              ซื้อสินค้าเพิ่ม
+            </Link>
+            <button
+              className="order-confirm-button"
+              type="button"
+              disabled={!preview.hasSufficientStock || isReviewed}
+              onClick={() => setIsReviewed(true)}
+            >
+              {isReviewed ? <><CheckIcon />ตรวจสอบข้อมูลแล้ว</> : 'ยืนยันรายละเอียดรายการ'}
+            </button>
+          </div>
 
           <p className="order-summary-footnote">
             ปุ่มนี้ยืนยันเฉพาะข้อมูลบนหน้าจอ ยังไม่มีการชำระเงินหรือสร้าง Order

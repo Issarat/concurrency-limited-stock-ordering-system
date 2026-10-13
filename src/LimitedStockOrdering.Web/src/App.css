@@ -809,6 +809,31 @@
 .order-stock-note svg,
 .order-confirm-button svg { width: 17px; height: 17px; flex: 0 0 auto; stroke: currentColor; stroke-width: 2; }
 
+.order-summary-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.order-continue-button {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #bfd7e3;
+  border-radius: 11px;
+  color: #087eae;
+  background: #fff;
+  font-size: .78rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.order-continue-button:hover {
+  border-color: #078ecb;
+  background: #f2fafd;
+}
+
 .order-confirm-button {
   width: 100%;
   min-height: 48px;
@@ -816,7 +841,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 0;
   border: 1px solid #078ecb;
   border-radius: 11px;
   color: #fff;

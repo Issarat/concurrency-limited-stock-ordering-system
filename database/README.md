@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL is the transactional source of truth for inventory, purchase quotas, and orders.
+PostgreSQL is the transactional source of truth for carts, inventory, purchase quotas, and orders.
 
 - `migrations/` contains ordered schema changes. Docker executes these scripts alphabetically only when it initializes an empty data volume.
 - `seeds/001_development_products.sql` contains repeatable local catalog data based on the images in `src/LimitedStockOrdering.Web/src/assets/image`.
@@ -18,7 +18,7 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-`001_initial_schema.sql` creates all tables. `002_add_regular_orders.sql` adds Regular and FlashSale order types. Docker then applies the product and regular-order development seeds.
+`001_initial_schema.sql` creates the original tables. `002_add_regular_orders.sql` adds Regular and FlashSale order types. `003_add_carts.sql` adds the non-reserving cart tables. Docker then applies the product and regular-order development seeds.
 
 Verify the schema:
 
@@ -45,6 +45,14 @@ docker compose exec -T postgres psql -U limited_stock -d limited_stock -v ON_ERR
 ```
 
 The regular-order seed creates `demo.buyer`, one Completed order for two White Football Jerseys, and a consistent remaining inventory quantity of 98. Its password hash is intentionally a placeholder until authentication seeding is implemented.
+
+Apply the cart migration to an existing local volume:
+
+```powershell
+docker compose exec -T postgres psql -U limited_stock -d limited_stock -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/003_add_carts.sql
+```
+
+The migration creates `carts` and `cart_items`. Cart items reference sellable variants and optionally reference the exact Flash Sale variant context. Adding an item to a cart does not decrement inventory.
 
 If the `postgres-data` volume already existed before a new migration was added, Docker will not execute initialization scripts again. For disposable local data only, recreate the database with:
 

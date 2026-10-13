@@ -1,6 +1,6 @@
 # High-Concurrency Limited Stock Ordering System — ER Diagram
 
-> Status: Approved PostgreSQL MVP design with product options and variants.
+> Status: Approved PostgreSQL MVP design with product options, variants, and a non-reserving cart.
 >
 > Data access uses Dapper. The purchase write path is implemented through a PostgreSQL function. The application does not connect to a payment gateway; the Purchase page only confirms the selected variant and quantity before submitting the order.
 
@@ -12,6 +12,9 @@
 - Price and stock belong to the variant, not the product or option value.
 - A product without selectable options still receives one Default variant so every purchase follows the same path.
 - Inventory is the only source of truth for available stock.
+- Adding an item to a cart does not reserve or decrement inventory.
+- Cart validity is calculated from current product, variant, flash-sale, inventory, and quota data whenever the cart is loaded or checkout is requested.
+- Checkout is blocked while any cart item is unavailable; the buyer must remove the item or reduce its quantity first.
 - Purchase quota is enforced at product level across all of its variants.
 - Product images are stored outside PostgreSQL; products keep an optional catalog cover URL or object-storage key, while option-value image records provide variant galleries.
 
@@ -30,6 +33,11 @@
 erDiagram
     users ||--o{ orders : places
     users ||--o{ purchase_quotas : consumes
+    users ||--o| carts : owns
+
+    carts ||--o{ cart_items : contains
+    product_variants ||--o{ cart_items : selected_as
+    flash_sales o|--o{ cart_items : added_from
 
     products ||--o{ product_categories : classified_as
     categories ||--o{ product_categories : contains
@@ -269,6 +277,36 @@ Stores total purchased quantity at product level, so purchases of different colo
 
 The primary key is (flash_sale_id, product_id, user_id). The pair (flash_sale_id, product_id) references flash_sale_products.
 
+### carts
+
+Stores the buyer's current cart. A cart does not reserve stock and may remain after a flash sale ends so the application can show which items are no longer purchasable.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| cart_id | uuid | PK | No | Application generated | Unique cart identifier |
+| user_id | uuid | UK, FK → users.user_id | No | — | Buyer owning the cart |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
+| updated_at | timestamptz | — | Yes | NULL | Latest item change time |
+
+The unique constraint on user_id permits at most one current cart per user in the MVP.
+
+### cart_items
+
+Stores selected variants and quantities without reserving inventory. `flash_sale_id` records the pricing context used when the item was added. A Flash Sale item must become invalid if that sale ends or is closed; the application must not silently convert it to a Regular item at a different price.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| cart_id | uuid | PK, FK → carts.cart_id | No | — | Parent cart |
+| variant_id | uuid | PK, FK → product_variants.variant_id | No | — | Selected sellable variant |
+| flash_sale_id | uuid | Composite FK | Yes | NULL | Sale context, or NULL for a Regular item |
+| quantity | integer | — | No | — | Requested quantity |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Time added to cart |
+| updated_at | timestamptz | — | Yes | NULL | Latest quantity or sale-context update |
+
+The primary key is (cart_id, variant_id). When `flash_sale_id` is non-NULL, `(flash_sale_id, variant_id)` references `flash_sale_variants(flash_sale_id, variant_id)`.
+
+Cart-item validity is derived rather than stored. The API may return statuses such as `Available`, `OutOfStock`, `InsufficientStock`, `SaleEnded`, `VariantInactive`, and `QuotaExceeded`.
+
 ### orders
 
 Stores confirmed Regular and FlashSale order requests. There is no payment transaction in the MVP.
@@ -357,7 +395,32 @@ The primary key is (order_id, variant_id).
 - Add an index on orders(flash_sale_id, created_at).
 - Add an index on order_items(variant_id, order_id).
 
+### Carts
+
+- carts.user_id is unique, allowing one current cart per user.
+- cart_items has primary key (cart_id, variant_id).
+- cart_items.quantity must be greater than zero.
+- Add an index on cart_items(variant_id, cart_id).
+- Add an index on cart_items(flash_sale_id, cart_id) for Flash Sale validation.
+- Deleting a cart cascades to its cart_items; deleting referenced users, variants, or flash sales is restricted.
+- Adding or updating a cart item never changes inventory.available_quantity.
+- If any item is invalid, the cart returns can_checkout = false until the item is removed or corrected.
+
 PostgreSQL does not automatically create indexes on referencing foreign-key columns. Create the reverse-lookup indexes listed above where the primary or unique key order does not already cover the expected query.
+
+## Cart validation flow
+
+```text
+Load cart
+  → Load each active variant and product
+  → Read current inventory
+  → For Flash Sale items, validate sale status and time window
+  → Validate the requested quantity and applicable product-level quota
+  → Calculate the current unit price and line total
+  → Return an item status and can_checkout
+```
+
+The cart check improves the user experience but is not a purchase guarantee. The purchase transaction must repeat all stock, sale, and quota checks because another buyer may consume stock after cart validation.
 
 ## Purchase transaction boundary
 
@@ -387,6 +450,8 @@ The transaction must preserve these invariants:
 ## Delete behavior
 
 - Products, variants, users, flash sales, and orders referenced by purchase history use restricted deletion.
+- Deleting a cart deletes its cart_items. Cart rows are operational data and are not purchase history.
+- Variants and flash sales referenced by cart_items use restricted deletion; inactive or ended records remain available for cart validation messages.
 - Catalog availability is controlled with is_active.
 - Removing a product-category assignment or an unused option image may use physical deletion.
 - Variants referenced by order items must never be physically deleted.
