@@ -20,6 +20,8 @@ A portfolio-grade flash-sale ordering system focused on backend correctness unde
 ```text
 src/
   LimitedStockOrdering.Api/       ASP.NET Core API and SignalR hub
+  LimitedStockOrdering.Application/ Application services and abstractions
+  LimitedStockOrdering.Infra/     Dapper, Npgsql, and persistence entities
   LimitedStockOrdering.Web/       React/Vite web application
 tests/
   LimitedStockOrdering.Api.Tests/ API and integration tests

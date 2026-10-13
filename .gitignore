@@ -19,6 +19,7 @@ appsettings.Local.json
 .vs/
 .vscode/
 .idea/
+.obsidian/
 .DS_Store
 Thumbs.db
 

@@ -1,16 +1,28 @@
 # High-Concurrency Limited Stock Ordering System — ER Diagram
 
-> Status: Approved MVP database design for the portfolio application.
+> Status: Approved PostgreSQL MVP design with product options and variants.
 >
-> Database: SQL Server. Data access uses Dapper, and the purchase write path is implemented through a stored procedure. The application does not connect to a payment gateway; the Purchase page only presents an order confirmation before the order request is submitted.
+> Data access uses Dapper. The purchase write path is implemented through a PostgreSQL function. The application does not connect to a payment gateway; the Purchase page only confirms the selected variant and quantity before submitting the order.
+
+## Design principles
+
+- A product is the catalog-level item shown to the customer.
+- A product option describes a choice such as Color or Size.
+- A product variant is the sellable SKU produced by one valid combination of option values.
+- Price and stock belong to the variant, not the product or option value.
+- A product without selectable options still receives one Default variant so every purchase follows the same path.
+- Inventory is the only source of truth for available stock.
+- Purchase quota is enforced at product level across all of its variants.
+- Product images are stored outside PostgreSQL; the database stores only URLs or object-storage keys.
 
 ## Date and time policy
 
-- Store application timestamps as UTC in `datetimeoffset` columns.
-- Use `TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')` for database-generated timestamps and `DateTimeOffset.UtcNow` in the application.
-- Convert UTC to the user's timezone only when displaying a value in the UI.
-- Flash-sale availability is determined from both its administrative `status` and its `starts_at`/`ends_at` window.
-- `updated_at` remains `NULL` until a row is changed after creation unless a table explicitly requires a value.
+- Store application timestamps in PostgreSQL timestamptz columns.
+- Keep the database and application sessions in UTC.
+- Use CURRENT_TIMESTAMP for database-generated timestamps and DateTimeOffset.UtcNow in the application.
+- Convert UTC to the user's timezone only when displaying a value.
+- Flash-sale availability is determined from both its administrative status and starts_at/ends_at window.
+- updated_at remains NULL until a row is changed after creation unless a table explicitly requires a value.
 
 ## Diagram
 
@@ -19,241 +31,358 @@ erDiagram
     users ||--o{ orders : places
     users ||--o{ purchase_quotas : consumes
 
-    products ||--|| inventory : has
     products ||--o{ product_categories : classified_as
     categories ||--o{ product_categories : contains
 
+    products ||--o{ product_options : defines
+    product_options ||--o{ product_option_values : contains
+    product_option_values ||--o{ product_option_value_images : illustrates
+
+    products ||--|{ product_variants : sells_as
+    product_variants ||--o{ product_variant_values : selects
+    product_options ||--o{ product_variant_values : assigned_by
+    product_option_values ||--o{ product_variant_values : selected_as
+    product_variants ||--|| inventory : stocked_by
+
     flash_sales ||--|{ flash_sale_products : offers
     products ||--o{ flash_sale_products : included_in
-
+    flash_sale_products ||--|{ flash_sale_variants : prices
+    product_variants ||--o{ flash_sale_variants : offered_as
     flash_sale_products ||--o{ purchase_quotas : limits
 
     flash_sales ||--o{ orders : receives
     orders ||--|{ order_items : contains
-    products ||--o{ order_items : ordered_as
+    product_variants ||--o{ order_items : ordered_as
 ```
-
----
 
 ## Table definitions
 
-### `users`
+### users
 
-Stores authenticated administrators and buyers. Disabled users remain in the database for order history and audit purposes but cannot submit new purchases.
+Stores authenticated administrators and buyers. Disabled users remain available for order history and audit but cannot submit new purchases.
 
-| Column | Type | Key | Nullable | Default | Description |
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `user_id` | `uniqueidentifier` | PK | No | Application generated | Unique user identifier |
-| `username` | `nvarchar(50)` | UK | No | — | Unique login name |
-| `password_hash` | `nvarchar(255)` | — | No | — | Password hash produced by the authentication component |
-| `first_name` | `nvarchar(50)` | — | No | — | User's first name |
-| `last_name` | `nvarchar(50)` | — | No | — | User's last name |
-| `role` | `varchar(20)` | — | No | `'Buyer'` | Authorization role: `Admin` or `Buyer` |
-| `is_active` | `bit` | — | No | `1` | Whether the account may authenticate and purchase |
-| `created_at` | `datetimeoffset` | — | No | UTC current time | UTC creation time |
-| `updated_at` | `datetimeoffset` | — | Yes | `NULL` | UTC time of the latest update |
+| user_id | uuid | PK | No | Application generated | Unique user identifier |
+| username | varchar(50) | UK | No | — | Unique login name |
+| password_hash | varchar(255) | — | No | — | Password hash |
+| first_name | varchar(50) | — | No | — | User's first name |
+| last_name | varchar(50) | — | No | — | User's last name |
+| role | varchar(20) | — | No | Buyer | Admin or Buyer |
+| is_active | boolean | — | No | true | Whether the account may authenticate and purchase |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
+| updated_at | timestamptz | — | Yes | NULL | Latest update time |
 
----
+### products
 
-### `products`
+Stores catalog-level product information. SKU, normal price, and stock are deliberately excluded because they belong to product variants.
 
-Stores the product catalog. Stock is deliberately excluded from this table and exists only in `inventory`.
-
-| Column | Type | Key | Nullable | Default | Description |
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `product_id` | `uniqueidentifier` | PK | No | Application generated | Unique product identifier |
-| `sku` | `varchar(50)` | UK | No | — | Unique stock-keeping unit |
-| `name` | `nvarchar(100)` | — | No | — | Product display name |
-| `description` | `nvarchar(500)` | — | Yes | `NULL` | Short product description |
-| `base_price` | `decimal(12,2)` | — | No | — | Normal catalog price |
-| `is_active` | `bit` | — | No | `1` | Whether the product is available for use in the application |
-| `created_at` | `datetimeoffset` | — | No | UTC current time | UTC creation time |
-| `updated_at` | `datetimeoffset` | — | Yes | `NULL` | UTC time of the latest update |
+| product_id | uuid | PK | No | Application generated | Unique product identifier |
+| name | varchar(100) | — | No | — | Product display name |
+| description | varchar(500) | — | Yes | NULL | Short product description |
+| is_active | boolean | — | No | true | Whether the product is visible and usable |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
+| updated_at | timestamptz | — | Yes | NULL | Latest update time |
 
----
+### categories
 
-### `categories`
-
-Stores product categories used for browsing and filtering.
-
-| Column | Type | Key | Nullable | Default | Description |
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `category_id` | `uniqueidentifier` | PK | No | Application generated | Unique category identifier |
-| `name` | `nvarchar(50)` | UK | No | — | Unique category name |
-| `is_active` | `bit` | — | No | `1` | Whether the category is visible and assignable |
-| `created_at` | `datetimeoffset` | — | No | UTC current time | UTC creation time |
-| `updated_at` | `datetimeoffset` | — | Yes | `NULL` | UTC time of the latest update |
+| category_id | uuid | PK | No | Application generated | Unique category identifier |
+| name | varchar(50) | UK | No | — | Unique category name |
+| is_active | boolean | — | No | true | Whether the category is visible |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
+| updated_at | timestamptz | — | Yes | NULL | Latest update time |
 
----
+### product_categories
 
-### `product_categories`
-
-Implements the many-to-many relationship between products and categories. Pricing does not belong in this table because a category assignment does not define a product price.
-
-| Column | Type | Key | Nullable | Default | Description |
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `product_id` | `uniqueidentifier` | PK, FK → `products.product_id` | No | — | Assigned product |
-| `category_id` | `uniqueidentifier` | PK, FK → `categories.category_id` | No | — | Assigned category |
+| product_id | uuid | PK, FK → products.product_id | No | — | Assigned product |
+| category_id | uuid | PK, FK → categories.category_id | No | — | Assigned category |
 
-The composite primary key is `(product_id, category_id)`.
+The composite primary key is (product_id, category_id).
 
----
+### product_options
 
-### `inventory`
+Defines the choices available for a product, such as Color and Size.
 
-Stores the current sellable quantity for the MVP's single warehouse. This table is the only source of truth for stock; no stock quantity is duplicated in `products` or `flash_sale_products`.
-
-| Column | Type | Key | Nullable | Default | Description |
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `product_id` | `uniqueidentifier` | PK, FK → `products.product_id` | No | — | Product whose stock is tracked |
-| `available_quantity` | `int` | — | No | — | Quantity currently available for purchase |
-| `row_version` | `rowversion` | — | No | Auto | Database-generated concurrency token |
-| `updated_at` | `datetimeoffset` | — | No | UTC current time | UTC time of the latest stock change |
+| option_id | uuid | PK | No | Application generated | Unique option identifier |
+| product_id | uuid | FK → products.product_id | No | — | Product owning the option |
+| name | varchar(50) | UK with product_id | No | — | Option name, such as Color |
+| display_order | integer | — | No | 0 | UI ordering |
+| is_required | boolean | — | No | true | Whether a variant must select this option |
 
-A separate stock identifier is unnecessary while the MVP has only one warehouse.
+Unique keys:
 
----
+- (product_id, name)
+- (product_id, option_id), used by composite foreign keys
 
-### `flash_sales`
+### product_option_values
 
-Stores sale windows and their administrative lifecycle. A sale is purchasable only when its status is `Active` and the current UTC time is within its start and end timestamps.
+Stores the values belonging to an option, such as Black, Navy, S, and M.
 
-| Column | Type | Key | Nullable | Default | Description |
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `flash_sale_id` | `uniqueidentifier` | PK | No | Application generated | Unique flash-sale identifier |
-| `name` | `nvarchar(100)` | — | No | — | Sale display name |
-| `starts_at` | `datetimeoffset` | — | No | — | Inclusive UTC start time |
-| `ends_at` | `datetimeoffset` | — | No | — | Exclusive UTC end time |
-| `status` | `varchar(20)` | — | No | — | `Draft`, `Active`, `Closed`, or `Cancelled` |
-| `created_at` | `datetimeoffset` | — | No | UTC current time | UTC creation time |
-| `updated_at` | `datetimeoffset` | — | Yes | `NULL` | UTC time of the latest update |
+| option_value_id | uuid | PK | No | Application generated | Unique value identifier |
+| option_id | uuid | FK → product_options.option_id | No | — | Parent option |
+| value | varchar(50) | UK with option_id | No | — | Display value |
+| swatch_hex | varchar(7) | — | Yes | NULL | Optional color swatch such as #171717 |
+| display_order | integer | — | No | 0 | UI ordering |
+| is_active | boolean | — | No | true | Whether the value may be selected |
 
----
+Unique keys:
 
-### `flash_sale_products`
+- (option_id, value)
+- (option_id, option_value_id), used by composite foreign keys
 
-Associates products with a flash sale and captures sale-specific price and buyer limit. The actual stock remains in `inventory`.
+### product_option_value_images
 
-| Column | Type | Key | Nullable | Default | Description |
+Stores image references for an option value. This is useful when all sizes of one color share the same gallery.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `flash_sale_id` | `uniqueidentifier` | PK, FK → `flash_sales.flash_sale_id` | No | — | Flash sale containing the offer |
-| `product_id` | `uniqueidentifier` | PK, FK → `products.product_id` | No | — | Product offered in the sale |
-| `sale_price` | `decimal(12,2)` | — | No | — | Unit price captured by a successful order |
-| `per_user_limit` | `int` | — | No | `10` | Maximum quantity one user may buy in this sale |
+| image_id | uuid | PK | No | Application generated | Unique image identifier |
+| option_value_id | uuid | FK → product_option_values.option_value_id | No | — | Option value represented by the image |
+| image_url | text | — | No | — | CDN URL or object-storage key |
+| alt_text | varchar(200) | — | Yes | NULL | Accessible image description |
+| display_order | integer | — | No | 0 | Gallery ordering |
+| is_primary | boolean | — | No | false | Primary image for the value |
 
-The composite primary key is `(flash_sale_id, product_id)`.
+A partial unique index on option_value_id where is_primary is true permits at most one primary image per option value.
 
----
+### product_variants
 
-### `purchase_quotas`
+Stores each sellable SKU. A product without options must still have one Default variant.
 
-Stores the quantity already purchased by each user for each flash-sale product. It is persistent business and audit data, not a cache. Quota, inventory, and order writes must commit or roll back together.
-
-| Column | Type | Key | Nullable | Default | Description |
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `flash_sale_id` | `uniqueidentifier` | PK, composite FK | No | — | Flash sale containing the product |
-| `product_id` | `uniqueidentifier` | PK, composite FK | No | — | Product whose quota is consumed |
-| `user_id` | `uniqueidentifier` | PK, FK → `users.user_id` | No | — | Buyer consuming the quota |
-| `purchased_quantity` | `int` | — | No | `0` | Total quantity successfully purchased |
-| `updated_at` | `datetimeoffset` | — | No | UTC current time | UTC time of the latest quota change |
+| variant_id | uuid | PK | No | Application generated | Unique variant identifier |
+| product_id | uuid | FK → products.product_id | No | — | Parent product |
+| sku | varchar(50) | UK | No | — | Unique sellable SKU |
+| base_price | numeric(12,2) | — | No | — | Normal variant price |
+| combination_key | varchar(300) | UK with product_id | No | — | Canonical option combination |
+| is_active | boolean | — | No | true | Whether the variant may be sold |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
+| updated_at | timestamptz | — | Yes | NULL | Latest update time |
 
-The composite primary key is `(flash_sale_id, product_id, user_id)`. The pair `(flash_sale_id, product_id)` is a composite foreign key to `flash_sale_products(flash_sale_id, product_id)`.
+For example, a canonical combination key may be color=black|size=m. The application must build it in stable option order.
 
----
+Unique keys:
 
-### `orders`
+- sku
+- (product_id, combination_key)
+- (product_id, variant_id), used by composite foreign keys
 
-Stores confirmed order requests. There is no payment transaction in the MVP. The idempotency constraint makes retries return the existing logical result instead of creating another order.
+### product_variant_values
 
-| Column | Type | Key | Nullable | Default | Description |
+Connects a variant to one selected value for each option.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `order_id` | `uniqueidentifier` | PK | No | Application generated | Unique order identifier |
-| `user_id` | `uniqueidentifier` | FK → `users.user_id` | No | — | Buyer who placed the order |
-| `flash_sale_id` | `uniqueidentifier` | FK → `flash_sales.flash_sale_id` | No | — | Flash sale used by the order |
-| `idempotency_key` | `varchar(100)` | UK with `user_id` | No | — | Client-generated request identifier |
-| `status` | `varchar(20)` | — | No | — | `Pending`, `Completed`, `Cancelled`, or `Failed` |
-| `total_amount` | `decimal(12,2)` | — | No | — | Sum of item quantity multiplied by captured unit price |
-| `created_at` | `datetimeoffset` | — | No | UTC current time | UTC creation time |
-| `updated_at` | `datetimeoffset` | — | Yes | `NULL` | UTC time of the latest update |
+| product_id | uuid | Composite FK | No | — | Product owning both the variant and option |
+| variant_id | uuid | PK, composite FK | No | — | Variant being described |
+| option_id | uuid | PK, composite FK | No | — | Selected option |
+| option_value_id | uuid | Composite FK | No | — | Selected value |
 
-The unique constraint on `(user_id, idempotency_key)` is the database-level idempotency guarantee.
+The primary key is (variant_id, option_id), so a variant can select only one value for each option.
 
----
+Composite foreign keys:
 
-### `order_items`
+- (product_id, variant_id) → product_variants(product_id, variant_id)
+- (product_id, option_id) → product_options(product_id, option_id)
+- (option_id, option_value_id) → product_option_values(option_id, option_value_id)
 
-Stores immutable purchase details, including the unit sale price captured when the order is created.
+These constraints prevent a variant from selecting an option or value belonging to another product.
 
-| Column | Type | Key | Nullable | Default | Description |
+### inventory
+
+Stores sellable stock per variant. This is the only source of truth for stock.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
 | --- | --- | --- | --- | --- | --- |
-| `order_id` | `uniqueidentifier` | PK, FK → `orders.order_id` | No | — | Parent order |
-| `product_id` | `uniqueidentifier` | PK, FK → `products.product_id` | No | — | Purchased product |
-| `quantity` | `int` | — | No | — | Purchased quantity |
-| `unit_price` | `decimal(12,2)` | — | No | — | Sale price captured at order creation |
+| variant_id | uuid | PK, FK → product_variants.variant_id | No | — | Variant whose stock is tracked |
+| available_quantity | integer | — | No | 0 | Quantity available for purchase |
+| row_version | bigint | — | No | 0 | Explicit optimistic concurrency version |
+| updated_at | timestamptz | — | No | CURRENT_TIMESTAMP | Latest stock change |
 
-The composite primary key is `(order_id, product_id)`. The purchase stored procedure validates that every item belongs to the flash sale recorded by its parent order.
+row_version is incremented by each successful stock update. It is an explicit PostgreSQL column and is not SQL Server rowversion.
 
----
+### flash_sales
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| flash_sale_id | uuid | PK | No | Application generated | Unique flash-sale identifier |
+| name | varchar(100) | — | No | — | Sale display name |
+| starts_at | timestamptz | — | No | — | Inclusive start time |
+| ends_at | timestamptz | — | No | — | Exclusive end time |
+| status | varchar(20) | — | No | Draft | Draft, Active, Closed, or Cancelled |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
+| updated_at | timestamptz | — | Yes | NULL | Latest update time |
+
+### flash_sale_products
+
+Includes a product in a sale and defines the buyer limit across all of that product's variants.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| flash_sale_id | uuid | PK, FK → flash_sales.flash_sale_id | No | — | Parent flash sale |
+| product_id | uuid | PK, FK → products.product_id | No | — | Product offered in the sale |
+| per_user_limit | integer | — | No | 10 | Maximum total quantity per user across all variants |
+
+The primary key is (flash_sale_id, product_id).
+
+### flash_sale_variants
+
+Enables individual variants and captures their sale prices.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| flash_sale_id | uuid | PK, composite FK | No | — | Parent flash sale |
+| product_id | uuid | Composite FK | No | — | Parent product |
+| variant_id | uuid | PK, composite FK | No | — | Variant offered in the sale |
+| sale_price | numeric(12,2) | — | No | — | Variant sale price |
+
+The primary key is (flash_sale_id, variant_id).
+
+Composite foreign keys:
+
+- (flash_sale_id, product_id) → flash_sale_products(flash_sale_id, product_id)
+- (product_id, variant_id) → product_variants(product_id, variant_id)
+
+### purchase_quotas
+
+Stores total purchased quantity at product level, so purchases of different colors and sizes consume the same limit.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| flash_sale_id | uuid | PK, composite FK | No | — | Flash sale |
+| product_id | uuid | PK, composite FK | No | — | Product whose quota is consumed |
+| user_id | uuid | PK, FK → users.user_id | No | — | Buyer |
+| purchased_quantity | integer | — | No | 0 | Total purchased across all variants |
+| updated_at | timestamptz | — | No | CURRENT_TIMESTAMP | Latest quota change |
+
+The primary key is (flash_sale_id, product_id, user_id). The pair (flash_sale_id, product_id) references flash_sale_products.
+
+### orders
+
+Stores confirmed order requests. There is no payment transaction in the MVP.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| order_id | uuid | PK | No | Application generated | Unique order identifier |
+| user_id | uuid | FK → users.user_id | No | — | Buyer |
+| flash_sale_id | uuid | FK → flash_sales.flash_sale_id | No | — | Sale used by the order |
+| idempotency_key | varchar(100) | UK with user_id | No | — | Client-generated request identifier |
+| status | varchar(20) | — | No | Pending | Pending, Completed, Cancelled, or Failed |
+| total_amount | numeric(12,2) | — | No | — | Sum of item quantity multiplied by captured price |
+| created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
+| updated_at | timestamptz | — | Yes | NULL | Latest update time |
+
+The unique constraint on (user_id, idempotency_key) provides database-level idempotency.
+
+### order_items
+
+Stores immutable variant details and display snapshots captured at purchase time.
+
+| Column | PostgreSQL type | Key | Nullable | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| order_id | uuid | PK, FK → orders.order_id | No | — | Parent order |
+| variant_id | uuid | PK, FK → product_variants.variant_id | No | — | Purchased variant |
+| quantity | integer | — | No | — | Purchased quantity |
+| unit_price | numeric(12,2) | — | No | — | Sale price captured at purchase |
+| sku_snapshot | varchar(50) | — | No | — | SKU at purchase time |
+| product_name_snapshot | varchar(100) | — | No | — | Product name at purchase time |
+| option_summary_snapshot | varchar(200) | — | No | — | Display text such as Color: Black, Size: M |
+
+The primary key is (order_id, variant_id).
 
 ## Constraints and indexes
 
-### `users`
+### Users and catalog
 
-- Unique constraint on `username`.
-- Check constraint: `role IN ('Admin', 'Buyer')`.
-- Index on `(is_active, role)` for administrative user queries.
+- users.username is unique.
+- users.role must be Admin or Buyer.
+- products and categories use is_active instead of physical deletion.
+- categories.name is unique.
+- product_categories has primary key (product_id, category_id).
+- Add an index on product_categories(category_id, product_id).
 
-### `products`
+### Options and variants
 
-- Unique constraint on `sku`.
-- Check constraint: `base_price >= 0`.
-- Index on `(is_active, name)` for product-list queries.
+- product_options has unique (product_id, name).
+- product_option_values has unique (option_id, value).
+- product_option_values.swatch_hex is NULL or matches #[0-9A-Fa-f]{6}.
+- product_variants.sku is unique.
+- product_variants.base_price must be greater than or equal to zero.
+- product_variants has unique (product_id, combination_key).
+- product_variant_values has primary key (variant_id, option_id).
+- Add an index on product_variant_values(option_value_id, variant_id).
+- Add a partial unique index on product_option_value_images(option_value_id) where is_primary is true.
 
-### `categories` and `product_categories`
+### Inventory
 
-- Unique constraint on `categories.name`.
-- Composite primary key on `product_categories(product_id, category_id)` prevents duplicate assignments.
-- Index on `product_categories(category_id, product_id)` supports category-to-product lookup; the primary key already supports product-to-category lookup.
+- inventory.available_quantity must be greater than or equal to zero.
+- inventory.row_version must be greater than or equal to zero.
+- Stock is decremented through a guarded atomic update by variant_id.
+- A successful stock update increments row_version and returns the committed available quantity.
 
-### `inventory`
+### Flash sales and quota
 
-- Check constraint: `available_quantity >= 0`.
-- `row_version` changes automatically whenever the inventory row is updated.
-- Stock must be decremented with a guarded atomic update inside the purchase stored procedure; the check constraint is a final invariant, not the concurrency algorithm by itself.
+- flash_sales.status must be Draft, Active, Closed, or Cancelled.
+- flash_sales.ends_at must be greater than starts_at.
+- Add an index on flash_sales(status, starts_at, ends_at).
+- flash_sale_products.per_user_limit must be greater than zero.
+- flash_sale_variants.sale_price must be greater than or equal to zero.
+- Add an index on flash_sale_variants(variant_id, flash_sale_id).
+- purchase_quotas.purchased_quantity must be greater than or equal to zero.
+- Add an index on purchase_quotas(user_id, flash_sale_id, product_id).
 
-### `flash_sales`
+### Orders
 
-- Check constraint: `status IN ('Draft', 'Active', 'Closed', 'Cancelled')`.
-- Check constraint: `ends_at > starts_at`.
-- Index on `(status, starts_at, ends_at)` for locating current and upcoming sales.
+- orders has unique (user_id, idempotency_key).
+- orders.status must be Pending, Completed, Cancelled, or Failed.
+- orders.total_amount must be greater than or equal to zero.
+- order_items.quantity must be greater than zero.
+- order_items.unit_price must be greater than or equal to zero.
+- Add an index on orders(user_id, created_at).
+- Add an index on orders(flash_sale_id, created_at).
+- Add an index on order_items(variant_id, order_id).
 
-### `flash_sale_products`
+PostgreSQL does not automatically create indexes on referencing foreign-key columns. Create the reverse-lookup indexes listed above where the primary or unique key order does not already cover the expected query.
 
-- Composite primary key on `(flash_sale_id, product_id)`.
-- Check constraint: `sale_price >= 0`.
-- Check constraint: `per_user_limit > 0`.
-- Index on `(product_id, flash_sale_id)` supports product-to-sale lookup.
+## Purchase transaction boundary
 
-### `purchase_quotas`
+The PostgreSQL purchase function receives the selected variant_id and performs all correctness checks in one transaction:
 
-- Composite primary key on `(flash_sale_id, product_id, user_id)`.
-- Composite foreign key `(flash_sale_id, product_id)` → `flash_sale_products(flash_sale_id, product_id)`.
-- Check constraint: `purchased_quantity >= 0`.
-- Index on `(user_id, flash_sale_id, product_id)` supports buyer quota and purchase-history queries.
+```text
+Validate user and requested quantity
+  → Load variant and parent product
+  → Validate flash sale, product, and variant
+  → Find or recognize (user_id, idempotency_key)
+  → Validate product-level quota across all variants
+  → Atomically decrement variant inventory
+  → Increment inventory row_version
+  → Create order and variant order item
+  → Commit or roll back all changes
+```
 
-### `orders`
+The transaction must preserve these invariants:
 
-- Unique constraint on `(user_id, idempotency_key)`.
-- Check constraint: `status IN ('Pending', 'Completed', 'Cancelled', 'Failed')`.
-- Check constraint: `total_amount >= 0`.
-- Index on `(user_id, created_at)` for buyer order history.
-- Index on `(flash_sale_id, created_at)` for sale-level reporting and reconciliation.
+- inventory.available_quantity never becomes negative.
+- A user's product-level quota never exceeds flash_sale_products.per_user_limit.
+- A successful order, order item, quota change, and variant stock decrement commit together.
+- Retrying the same (user_id, idempotency_key) does not decrement stock or create another order.
+- SignalR publishes only committed variant inventory values.
 
-### `order_items`
+## Delete behavior
 
-- Composite primary key on `(order_id, product_id)`.
-- Check constraint: `quantity > 0`.
-- Check constraint: `unit_price >= 0`.
-- Index on `(product_id, order_id)` supports product-level order reporting.
-
-SQL Server does not automatically create indexes for foreign keys, so the deployment script must create the reverse-lookup indexes listed above where the primary or unique key order does not already cover the query.
+- Products, variants, users, flash sales, and orders referenced by purchase history use restricted deletion.
+- Catalog availability is controlled with is_active.
+- Removing a product-category assignment or an unused option image may use physical deletion.
+- Variants referenced by order items must never be physically deleted.
+- Closing or cancelling a flash sale does not restore inventory or delete completed orders automatically.

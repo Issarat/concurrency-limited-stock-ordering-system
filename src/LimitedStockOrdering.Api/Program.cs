@@ -2,10 +2,11 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using LimitedStockOrdering.Api.Hubs;
 using Microsoft.AspNetCore.HttpOverrides;
-using Npgsql;
+using LimitedStockOrdering.Infra;
 
 const string WebCorsPolicy = "WebClient";
 const string PurchaseRateLimitPolicy = "Purchase";
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,13 +22,12 @@ builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddSignalR();
 
-builder.Services.AddSingleton(_ =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("Postgres")
-        ?? throw new InvalidOperationException("Connection string 'Postgres' is required.");
+var connectionString =
+    builder.Configuration.GetConnectionString("Postgres")
+    ?? throw new InvalidOperationException(
+        "Connection string 'Postgres' is required.");
 
-    return new NpgsqlDataSourceBuilder(connectionString).Build();
-});
+builder.Services.AddInfrastructure(connectionString);
 
 builder.Services.AddCors(options =>
 {
