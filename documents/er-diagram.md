@@ -13,7 +13,7 @@
 - A product without selectable options still receives one Default variant so every purchase follows the same path.
 - Inventory is the only source of truth for available stock.
 - Purchase quota is enforced at product level across all of its variants.
-- Product images are stored outside PostgreSQL; the database stores only URLs or object-storage keys.
+- Product images are stored outside PostgreSQL; products keep an optional catalog cover URL or object-storage key, while option-value image records provide variant galleries.
 
 ## Date and time policy
 
@@ -82,6 +82,7 @@ Stores catalog-level product information. SKU, normal price, and stock are delib
 | product_id | uuid | PK | No | Application generated | Unique product identifier |
 | name | varchar(100) | — | No | — | Product display name |
 | description | varchar(500) | — | Yes | NULL | Short product description |
+| image_url | text | — | Yes | NULL | Catalog cover image URL, local path, or object-storage key |
 | is_active | boolean | — | No | true | Whether the product is visible and usable |
 | created_at | timestamptz | — | No | CURRENT_TIMESTAMP | Creation time |
 | updated_at | timestamptz | — | Yes | NULL | Latest update time |

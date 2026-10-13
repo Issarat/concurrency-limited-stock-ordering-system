@@ -42,6 +42,8 @@ dotnet restore LimitedStockOrdering.sln
 dotnet run --project src/LimitedStockOrdering.Api
 ```
 
+On the first run with an empty Docker volume, PostgreSQL automatically applies the scripts in `database/migrations/`. See [database/README.md](database/README.md) for schema verification and local reset instructions.
+
 In a second terminal:
 
 ```powershell

@@ -1,19 +1,22 @@
 services:
   postgres:
     image: postgres:18-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: limited_stock
-      POSTGRES_USER: limited_stock
-      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: ${POSTGRES_DB:-limited_stock}
+      POSTGRES_USER: ${POSTGRES_USER:-limited_stock}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U limited_stock -d limited_stock"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-limited_stock} -d ${POSTGRES_DB:-limited_stock}"]
       interval: 5s
       timeout: 5s
       retries: 10
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
+      - ./database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+      - ./database/seeds/001_development_products.sql:/docker-entrypoint-initdb.d/100_development_products.sql:ro
 
 volumes:
   postgres-data:
