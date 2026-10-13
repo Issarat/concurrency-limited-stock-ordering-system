@@ -1,0 +1,10 @@
+@LimitedStockOrdering.Api_HostAddress = http://localhost:5171
+
+GET {{LimitedStockOrdering.Api_HostAddress}}/health
+
+###
+
+GET {{LimitedStockOrdering.Api_HostAddress}}/api/system/status
+Accept: application/json
+
+###

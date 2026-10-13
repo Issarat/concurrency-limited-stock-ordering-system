@@ -1,0 +1,29 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# Node
+**/node_modules/
+**/dist/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+
+# IDE and operating system
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test and tooling output
+TestResults/
+coverage/
+artifacts/
+*.log
