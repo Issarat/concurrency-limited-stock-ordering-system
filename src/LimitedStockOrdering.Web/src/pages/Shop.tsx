@@ -1,14 +1,9 @@
 import { useEffect, useMemo, useState, type SVGProps } from 'react'
 import { Link } from 'react-router-dom'
 import { getProducts, type ProductListItem } from '../lib/api'
+import { resolveProductImage } from '../lib/productImages'
 
 type IconProps = SVGProps<SVGSVGElement>
-
-const productImages = import.meta.glob('../assets/image/*', {
-  eager: true,
-  import: 'default',
-  query: '?url',
-}) as Record<string, string>
 
 const priceFormatter = new Intl.NumberFormat('th-TH', {
   style: 'currency',
@@ -40,17 +35,6 @@ function BoltIcon(props: IconProps) {
       <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z" />
     </svg>
   )
-}
-
-function resolveProductImage(imageUrl: string | null) {
-  if (!imageUrl) return null
-
-  const filename = imageUrl.split('/').pop()
-  const imageEntry = Object.entries(productImages).find(([path]) =>
-    path.endsWith(`/${filename}`),
-  )
-
-  return imageEntry?.[1] ?? imageUrl
 }
 
 function ProductCard({ product }: { product: ProductListItem }) {
@@ -107,11 +91,8 @@ function ProductCard({ product }: { product: ProductListItem }) {
               สินค้าหมด
             </button>
           ) : (
-            <Link
-              className="product-buy-button"
-              to={`/purchase/${product.isOnFlashSale ? 'current-sale' : 'regular'}/${product.productId}`}
-            >
-              เลือกซื้อ
+            <Link className="product-buy-button" to={`/products/${product.productId}`}>
+              ดูรายละเอียด
             </Link>
           )}
         </div>

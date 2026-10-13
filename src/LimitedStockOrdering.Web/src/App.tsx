@@ -3,6 +3,7 @@ import './App.css'
 import { AppLayout } from './layouts/AppLayout'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { ProductDetailPage } from './pages/ProductDetailPage'
 import { PurchaseConfirmationPage } from './pages/PurchaseConfirmationPage'
 import { ShopPage } from './pages/Shop'
 
@@ -12,6 +13,7 @@ function App() {
       <Route path="/" element={<LoginPage />} />
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<ShopPage />} />
+        <Route path="/products/:productId" element={<ProductDetailPage />} />
         <Route
           path="/purchase/:flashSaleId/:productId"
           element={<PurchaseConfirmationPage />}
