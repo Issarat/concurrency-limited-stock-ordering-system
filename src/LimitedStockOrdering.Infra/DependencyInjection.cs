@@ -22,9 +22,7 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IProductRepository, ProductRepository>();
-
-        // เพิ่มภายหลังเมื่อมี Purchase Repository
-        // services.AddScoped<IPurchaseRepository, PurchaseRepository>();
+        services.AddScoped<IOrderRepository, OrderRepository>();
 
         return services;
     }

@@ -48,6 +48,35 @@ export type ProductDetail = ProductListItem & {
   variants: ProductVariant[]
 }
 
+export type OrderPreviewRequest = {
+  productId: string
+  variantId: string
+  quantity: number
+  orderType: 'Regular' | 'FlashSale'
+}
+
+export type OrderPreviewOption = {
+  name: string
+  value: string
+}
+
+export type OrderPreview = {
+  productId: string
+  variantId: string
+  productName: string
+  description: string | null
+  imageUrl: string | null
+  sku: string
+  orderType: 'Regular' | 'FlashSale'
+  unitPrice: number
+  quantity: number
+  totalAmount: number
+  availableQuantity: number
+  hasSufficientStock: boolean
+  isOnFlashSale: boolean
+  options: OrderPreviewOption[]
+}
+
 export async function getSystemStatus(signal?: AbortSignal): Promise<SystemStatus> {
   const response = await fetch(`${apiBaseUrl}/api/system/status`, { signal })
 
@@ -79,4 +108,22 @@ export async function getProductById(
   }
 
   return response.json() as Promise<ProductDetail>
+}
+
+export async function getOrderPreview(
+  request: OrderPreviewRequest,
+  signal?: AbortSignal,
+): Promise<OrderPreview> {
+  const response = await fetch(`${apiBaseUrl}/api/orders/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Order preview request failed with ${response.status}`)
+  }
+
+  return response.json() as Promise<OrderPreview>
 }
