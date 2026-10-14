@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type SVGProps } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { loginAdmin, loginAsGuest } from '../lib/api'
 
 type IconProps = SVGProps<SVGSVGElement>
 
@@ -57,11 +58,44 @@ function ArrowIcon(props: IconProps) {
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const [isAdminMode, setIsAdminMode] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleAdminSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    navigate('/dashboard')
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      await loginAdmin(username, password)
+      navigate('/')
+    } catch (requestError) {
+      setError(requestError instanceof Error
+        ? requestError.message
+        : 'ไม่สามารถเข้าสู่ระบบ Admin ได้')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handleGuestLogin() {
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      await loginAsGuest()
+      navigate('/')
+    } catch (requestError) {
+      setError(requestError instanceof Error
+        ? requestError.message
+        : 'ไม่สามารถสร้าง Guest session ได้')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -135,78 +169,119 @@ export function LoginPage() {
               <button
                 type="button"
                 className="text-button"
-                onClick={() => navigate('/dashboard')}
+                onClick={handleGuestLogin}
+                disabled={isSubmitting}
               >
                 เปิด Demo
               </button>
             </div>
 
             <div className="auth-form-heading">
-              <span className="form-kicker">ยินดีต้อนรับกลับ</span>
-              <h2>เข้าสู่ระบบ</h2>
-              <p>ใช้บัญชีสำหรับทดลอง Flash Sale dashboard</p>
+              <span className="form-kicker">
+                {isAdminMode ? 'สำหรับผู้ดูแลระบบ' : 'เริ่มทดลองระบบ'}
+              </span>
+              <h2>{isAdminMode ? 'เข้าสู่ระบบ Admin' : 'เข้าใช้งานแบบ Guest'}</h2>
+              <p>
+                {isAdminMode
+                  ? 'กรอกบัญชีผู้ดูแลเพื่อจัดการระบบ'
+                  : 'ระบบจะสร้างบัญชีผู้ใช้ชั่วคราวสำหรับตะกร้าและการสั่งซื้อ'}
+              </p>
             </div>
 
-            <form className="login-form" onSubmit={handleSubmit}>
-              <label htmlFor="username">ชื่อผู้ใช้</label>
-              <div className="input-control">
-                <UserIcon className="input-icon" />
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  autoComplete="username"
-                  placeholder="กรอกชื่อผู้ใช้"
-                  required
-                />
-              </div>
+            {error && <p className="auth-error" role="alert">{error}</p>}
 
-              <label htmlFor="password">รหัสผ่าน</label>
-              <div className="input-control">
-                <LockIcon className="input-icon" />
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="กรอกรหัสผ่าน"
-                  minLength={8}
-                  required
-                />
+            {isAdminMode ? (
+              <form className="login-form" onSubmit={handleAdminSubmit}>
+                <label htmlFor="username">ชื่อผู้ใช้</label>
+                <div className="input-control">
+                  <UserIcon className="input-icon" />
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    autoComplete="username"
+                    placeholder="กรอกชื่อผู้ใช้"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    disabled={isSubmitting}
+                    required
+                  />
+                </div>
+
+                <label htmlFor="password">รหัสผ่าน</label>
+                <div className="input-control">
+                  <LockIcon className="input-icon" />
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="กรอกรหัสผ่าน"
+                    minLength={8}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    disabled={isSubmitting}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                    disabled={isSubmitting}
+                  >
+                    <EyeIcon isOpen={showPassword} />
+                  </button>
+                </div>
+
                 <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() => setShowPassword((current) => !current)}
-                  aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                  className="primary-login-button"
+                  type="submit"
+                  disabled={isSubmitting}
                 >
-                  <EyeIcon isOpen={showPassword} />
+                  <span>{isSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ Admin'}</span>
+                  <ArrowIcon />
                 </button>
-              </div>
 
-              <div className="form-options">
-                <label className="remember-control">
-                  <input type="checkbox" name="remember" />
-                  <span>จดจำฉันไว้</span>
-                </label>
-                <span className="form-mode-note">บัญชีทดสอบเท่านั้น</span>
-              </div>
+                <button
+                  className="admin-mode-back"
+                  type="button"
+                  onClick={() => {
+                    setIsAdminMode(false)
+                    setError(null)
+                  }}
+                  disabled={isSubmitting}
+                >
+                  กลับไปเข้าใช้งานแบบ Guest
+                </button>
+              </form>
+            ) : (
+              <>
+                <button
+                  className="primary-login-button admin-login-button"
+                  type="button"
+                  onClick={() => {
+                    setIsAdminMode(true)
+                    setError(null)
+                  }}
+                >
+                  <span>เข้าสู่ระบบ Admin</span>
+                  <ArrowIcon />
+                </button>
 
-              <button className="primary-login-button" type="submit">
-                <span>เข้าสู่ระบบ</span>
-                <ArrowIcon />
-              </button>
-            </form>
+                <div className="auth-divider"><span>หรือ</span></div>
 
-            <div className="auth-divider"><span>หรือ</span></div>
-
-            <button
-              className="demo-login-button"
-              type="button"
-              onClick={() => navigate('/dashboard')}
-            >
-              <span className="demo-avatar">D</span>
-              เข้าสู่ระบบด้วยบัญชี Demo
-            </button>
+                <button
+                  className="demo-login-button"
+                  type="button"
+                  onClick={handleGuestLogin}
+                  disabled={isSubmitting}
+                >
+                  <span className="demo-avatar">G</span>
+                  เข้าใช้งานแบบ Anonymous Guest
+                </button>
+              </>
+            )}
 
             <p className="auth-footnote">
               ระบบนี้เป็น Portfolio demo และไม่มีการชำระเงินจริง

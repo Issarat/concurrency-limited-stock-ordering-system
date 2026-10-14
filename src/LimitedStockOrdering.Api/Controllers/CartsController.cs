@@ -1,21 +1,23 @@
+using System.Security.Claims;
 using LimitedStockOrdering.Application.Carts;
 using LimitedStockOrdering.Application.Repositories;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LimitedStockOrdering.Api.Controllers;
 
 [ApiController]
-[Route("api/carts/{userId:guid}")]
+[Authorize(Roles = "Buyer")]
+[Route("api/cart")]
 public sealed class CartsController(ICartRepository cartRepository) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<CartResponse>> Get(
-        Guid userId,
         CancellationToken cancellationToken)
     {
-        if (userId == Guid.Empty)
+        if (!TryGetUserId(out var userId))
         {
-            return BadRequest(CreateProblem("UserId ต้องเป็น UUID ที่ถูกต้อง"));
+            return Unauthorized();
         }
 
         var cart = await cartRepository.GetAsync(userId, cancellationToken);
@@ -24,13 +26,17 @@ public sealed class CartsController(ICartRepository cartRepository) : Controller
 
     [HttpPost("items")]
     public async Task<ActionResult<CartResponse>> AddItem(
-        Guid userId,
         [FromBody] AddCartItemRequest request,
         CancellationToken cancellationToken)
     {
-        if (userId == Guid.Empty || request.VariantId == Guid.Empty)
+        if (!TryGetUserId(out var userId))
         {
-            return BadRequest(CreateProblem("UserId และ VariantId ต้องเป็น UUID ที่ถูกต้อง"));
+            return Unauthorized();
+        }
+
+        if (request.VariantId == Guid.Empty)
+        {
+            return BadRequest(CreateProblem("VariantId ต้องเป็น UUID ที่ถูกต้อง"));
         }
 
         if (request.Quantity is < 1 or > 10)
@@ -56,14 +62,18 @@ public sealed class CartsController(ICartRepository cartRepository) : Controller
 
     [HttpPatch("items/{variantId:guid}")]
     public async Task<ActionResult<CartResponse>> UpdateQuantity(
-        Guid userId,
         Guid variantId,
         [FromBody] UpdateCartItemQuantityRequest request,
         CancellationToken cancellationToken)
     {
-        if (userId == Guid.Empty || variantId == Guid.Empty)
+        if (!TryGetUserId(out var userId))
         {
-            return BadRequest(CreateProblem("UserId และ VariantId ต้องเป็น UUID ที่ถูกต้อง"));
+            return Unauthorized();
+        }
+
+        if (variantId == Guid.Empty)
+        {
+            return BadRequest(CreateProblem("VariantId ต้องเป็น UUID ที่ถูกต้อง"));
         }
 
         if (request.Quantity is < 1 or > 10)
@@ -88,13 +98,17 @@ public sealed class CartsController(ICartRepository cartRepository) : Controller
 
     [HttpDelete("items/{variantId:guid}")]
     public async Task<ActionResult<CartResponse>> RemoveItem(
-        Guid userId,
         Guid variantId,
         CancellationToken cancellationToken)
     {
-        if (userId == Guid.Empty || variantId == Guid.Empty)
+        if (!TryGetUserId(out var userId))
         {
-            return BadRequest(CreateProblem("UserId และ VariantId ต้องเป็น UUID ที่ถูกต้อง"));
+            return Unauthorized();
+        }
+
+        if (variantId == Guid.Empty)
+        {
+            return BadRequest(CreateProblem("VariantId ต้องเป็น UUID ที่ถูกต้อง"));
         }
 
         var result = await cartRepository.RemoveItemAsync(
@@ -110,6 +124,10 @@ public sealed class CartsController(ICartRepository cartRepository) : Controller
 
         return Ok(await cartRepository.GetAsync(userId, cancellationToken));
     }
+
+    private bool TryGetUserId(out Guid userId) => Guid.TryParse(
+        User.FindFirstValue(ClaimTypes.NameIdentifier),
+        out userId);
 
     private ObjectResult? MapMutationFailure(CartMutationStatus status) => status switch
     {

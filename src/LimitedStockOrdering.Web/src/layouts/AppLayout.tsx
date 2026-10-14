@@ -1,5 +1,6 @@
 import { type SVGProps } from 'react'
-import { Link, Outlet } from 'react-router-dom'
+import { Link, Outlet, useNavigate } from 'react-router-dom'
+import { clearAuthSession, getStoredAuthSession } from '../lib/api'
 
 type IconProps = SVGProps<SVGSVGElement>
 
@@ -31,6 +32,24 @@ function SparkIcon(props: IconProps) {
 }
 
 export function AppLayout() {
+  const navigate = useNavigate()
+  const session = getStoredAuthSession()
+  const accountName = session
+    ? [session.user.firstName, session.user.lastName]
+        .filter(Boolean)
+        .join(' ') || session.user.displayName
+    : 'เข้าสู่ระบบ'
+
+  function handleLogout() {
+    if (session) {
+      clearAuthSession()
+      navigate('/', { replace: true })
+      return
+    }
+
+    navigate('/login')
+  }
+
   return (
     <div className="storefront-shell">
       <div className="utility-bar">
@@ -45,23 +64,34 @@ export function AppLayout() {
 
       <header className="commerce-header">
         <div className="storefront-container commerce-nav">
-          <Link className="commerce-brand" to="/dashboard">
+          <Link className="commerce-brand" to="/">
             <span>Limited</span>Stock
           </Link>
 
           <nav className="commerce-actions" aria-label="Account and order">
-            <Link to="/" className="commerce-action">
-              <UserIcon />
-              <span>เข้าสู่ระบบ</span>
-            </Link>
-            <span className="nav-divider" aria-hidden="true" />
-            <Link
-              to="/purchase/demo-sale/demo-product"
-              className="commerce-action"
+            <button
+              type="button"
+              className="commerce-action commerce-action-button"
+              onClick={handleLogout}
+              title={session ? 'ออกจากระบบ' : 'เข้าสู่ระบบ'}
             >
-              <CartIcon />
-              <span>ตะกร้า</span>
-            </Link>
+              <UserIcon />
+              <span>
+                {accountName}
+              </span>
+            </button>
+            {session?.user.role === 'Buyer' && (
+              <>
+                <span className="nav-divider" aria-hidden="true" />
+                <Link
+                  to="/purchase/demo-sale/demo-product"
+                  className="commerce-action"
+                >
+                  <CartIcon />
+                  <span>ตะกร้า</span>
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       </header>

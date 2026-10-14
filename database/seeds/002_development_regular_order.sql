@@ -7,22 +7,26 @@ INSERT INTO users (
     first_name,
     last_name,
     role,
+    is_anonymous,
     is_active
 )
 VALUES (
     '4df29112-6160-41a5-88a1-8f85532b0231',
     'demo.buyer',
-    'development-seed-placeholder',
+    NULL,
     'Demo',
     'Buyer',
     'Buyer',
+    true,
     true
 )
 ON CONFLICT (user_id) DO UPDATE
 SET username = EXCLUDED.username,
+    password_hash = EXCLUDED.password_hash,
     first_name = EXCLUDED.first_name,
     last_name = EXCLUDED.last_name,
     role = EXCLUDED.role,
+    is_anonymous = EXCLUDED.is_anonymous,
     is_active = EXCLUDED.is_active,
     updated_at = CURRENT_TIMESTAMP;
 

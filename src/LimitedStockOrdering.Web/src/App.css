@@ -108,6 +108,12 @@
   color: #048dce;
 }
 
+.commerce-action-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .commerce-action svg {
   width: 20px;
   height: 20px;
@@ -1417,6 +1423,27 @@
   stroke-width: 1.8;
 }
 
+.admin-login-button {
+  margin-top: 34px;
+}
+
+.login-form .primary-login-button {
+  margin-top: 26px;
+}
+
+.admin-mode-back {
+  margin-top: 14px;
+  border: 0;
+  color: #647087;
+  background: transparent;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.admin-mode-back:hover {
+  color: #2363e9;
+}
+
 .auth-divider {
   display: flex;
   align-items: center;
@@ -1465,8 +1492,30 @@
   text-align: center;
 }
 
+.auth-error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #f1c4c7;
+  border-radius: 9px;
+  color: #a5373f;
+  background: #fff3f4;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.primary-login-button:disabled,
+.demo-login-button:disabled,
+.admin-mode-back:disabled,
+.text-button:disabled,
+.password-toggle:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  transform: none;
+}
+
 .primary-login-button:focus-visible,
 .demo-login-button:focus-visible,
+.admin-mode-back:focus-visible,
 .password-toggle:focus-visible,
 .text-button:focus-visible,
 .remember-control input:focus-visible,

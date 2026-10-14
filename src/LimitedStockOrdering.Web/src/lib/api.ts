@@ -2,6 +2,118 @@ const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undef
 
 export const apiBaseUrl = configuredApiBaseUrl?.replace(/\/$/, '') ?? ''
 
+const authStorageKey = 'limited-stock-auth'
+
+export type AuthUser = {
+  userId: string
+  username: string
+  firstName: string
+  lastName: string
+  displayName: string
+  role: 'Admin' | 'Buyer'
+  isAnonymous: boolean
+}
+
+export type AuthSession = {
+  accessToken: string
+  tokenType: 'Bearer'
+  expiresAt: string
+  user: AuthUser
+}
+
+type ApiProblem = {
+  detail?: string
+}
+
+export function getStoredAuthSession(): AuthSession | null {
+  // Authentication belongs to the current browser tab only.
+  localStorage.removeItem(authStorageKey)
+  const serialized = sessionStorage.getItem(authStorageKey)
+  if (!serialized) {
+    return null
+  }
+
+  try {
+    const session = JSON.parse(serialized) as AuthSession
+    const isLegacyGuest = session.user?.isAnonymous
+      && (!session.user.firstName || !session.user.lastName)
+    if (!session.accessToken
+      || Date.parse(session.expiresAt) <= Date.now()
+      || isLegacyGuest) {
+      clearAuthSession()
+      return null
+    }
+
+    return session
+  } catch {
+    clearAuthSession()
+    return null
+  }
+}
+
+export function clearAuthSession() {
+  sessionStorage.removeItem(authStorageKey)
+  localStorage.removeItem(authStorageKey)
+}
+
+function storeAuthSession(session: AuthSession) {
+  sessionStorage.setItem(authStorageKey, JSON.stringify(session))
+  return session
+}
+
+async function readAuthResponse(response: Response): Promise<AuthSession> {
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null) as ApiProblem | null
+    throw new Error(problem?.detail ?? `Authentication failed with ${response.status}`)
+  }
+
+  return storeAuthSession(await response.json() as AuthSession)
+}
+
+export async function loginAdmin(
+  username: string,
+  password: string,
+): Promise<AuthSession> {
+  const response = await fetch(`${apiBaseUrl}/api/auth/admin/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+
+  return readAuthResponse(response)
+}
+
+export async function loginAsGuest(): Promise<AuthSession> {
+  const existingSession = getStoredAuthSession()
+  if (existingSession?.user.isAnonymous) {
+    return existingSession
+  }
+
+  const response = await fetch(`${apiBaseUrl}/api/auth/guest`, {
+    method: 'POST',
+  })
+
+  return readAuthResponse(response)
+}
+
+export async function authenticatedFetch(
+  input: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const session = getStoredAuthSession()
+  const headers = new Headers(init.headers)
+  if (session) {
+    headers.set('Authorization', `Bearer ${session.accessToken}`)
+  }
+
+  const response = await fetch(input, { ...init, headers })
+  if (response.status === 401) {
+    clearAuthSession()
+  }
+
+  return response
+}
+
 export type SystemStatus = {
   service: string
   status: string

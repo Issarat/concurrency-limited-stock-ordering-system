@@ -27,4 +27,14 @@ public sealed class SystemEndpointTests(WebApplicationFactory<Program> factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("LimitedStockOrdering.Api", content, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task CartRequiresAuthentication()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/cart");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 }

@@ -18,10 +18,13 @@ services:
       - ./database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
       - ./database/migrations/002_add_regular_orders.sql:/docker-entrypoint-initdb.d/002_add_regular_orders.sql:ro
       - ./database/migrations/003_add_carts.sql:/docker-entrypoint-initdb.d/003_add_carts.sql:ro
+      - ./database/migrations/004_add_authentication.sql:/docker-entrypoint-initdb.d/004_add_authentication.sql:ro
+      - ./database/migrations/005_allow_duplicate_guest_usernames.sql:/docker-entrypoint-initdb.d/005_allow_duplicate_guest_usernames.sql:ro
       - ./database/seeds/001_development_products.sql:/docker-entrypoint-initdb.d/100_development_products.sql:ro
       - ./database/seeds/002_development_regular_order.sql:/docker-entrypoint-initdb.d/110_development_regular_order.sql:ro
       - ./database/seeds/003_development_polo_options.sql:/docker-entrypoint-initdb.d/120_development_polo_options.sql:ro
       - ./database/seeds/004_development_all_product_options.sql:/docker-entrypoint-initdb.d/130_development_all_product_options.sql:ro
+      - ./database/seeds/005_development_admin.sql:/docker-entrypoint-initdb.d/140_development_admin.sql:ro
 
 volumes:
   postgres-data:
